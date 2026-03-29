@@ -1,0 +1,16 @@
+# JS dependencies (устанавливаются через npm install)
+node_modules/
+
+# Фронтенд билд (генерируется через npm run build)
+dist/
+
+# Rust/Tauri артефакты (генерируются через cargo build)
+src-tauri/target/
+
+# macOS мусор
+.DS_Store
+**/.DS_Store
+
+# Переменные окружения (на случай если добавишь)
+.env
+.env.local
