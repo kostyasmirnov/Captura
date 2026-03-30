@@ -30,7 +30,19 @@ Tools inside the capture overlay also have single-key shortcuts: `P` pen, `A` ar
 
 ## Installation
 
-Download the latest `.dmg` from the [Releases page](../../releases/latest), open it, drag **Captura.app** to your Applications folder, and launch.
+1. Download the latest `.dmg` from the [Releases page](../../releases/latest)
+2. Open the `.dmg` and drag **Captura.app** to your Applications folder
+3. Launch the app
+
+**"App is damaged" error on macOS**
+
+macOS blocks apps that are not signed with an Apple certificate. If you see _"Captura is damaged and can't be opened"_, run this command in Terminal and try again:
+
+```bash
+xattr -rd com.apple.quarantine /Applications/Captura.app
+```
+
+**Screen Recording permission**
 
 On first launch macOS will ask for **Screen Recording** permission — required to capture the screen. Grant it in **System Settings → Privacy & Security → Screen Recording**.
 
