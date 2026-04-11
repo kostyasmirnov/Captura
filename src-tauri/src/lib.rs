@@ -2,12 +2,14 @@ mod capture;
 mod commands;
 mod history;
 mod settings;
+mod temp;
 mod tray;
 
 use commands::*;
 use history::HistoryManager;
 use settings::AppSettings;
 use std::sync::Mutex;
+use tauri::Manager;
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
 
 pub struct AppState {
@@ -54,6 +56,13 @@ pub fn run() {
 
             // Register global hotkeys
             register_hotkeys(app.handle());
+
+            // Clean up temp files from previous sessions
+            {
+                let state = app.state::<Mutex<AppState>>();
+                let lifetime = state.lock().unwrap().settings.temp_file_lifetime_minutes as u64;
+                temp::cleanup_old_temp_files(lifetime);
+            }
 
             Ok(())
         })

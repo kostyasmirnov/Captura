@@ -2,7 +2,6 @@ use crate::capture::{self, CaptureData};
 use crate::history::HistoryEntry;
 use crate::settings::AppSettings;
 use crate::AppState;
-use arboard::Clipboard;
 use base64::{engine::general_purpose, Engine as _};
 use chrono::Local;
 use std::fs;
@@ -162,6 +161,7 @@ async fn handle_after_capture<R: Runtime>(
         }
         "copy" => {
             do_copy_to_clipboard(image_data)?;
+            // temp path returned but not needed here
         }
         _ => {
             do_open_editor_window(app)?;
@@ -343,21 +343,34 @@ pub async fn save_screenshot(
     Ok(path_str)
 }
 
-fn do_copy_to_clipboard(image_data: &str) -> Result<(), String> {
-    let img = capture::decode_base64_to_image(image_data)?;
-    let rgba = img.to_rgba8();
-    let (width, height) = rgba.dimensions();
-    let raw_data = rgba.into_raw();
+/// Copy image to clipboard and save a temp file.
+/// Uses osascript so macOS pasteboard holds both PNG data (paste in image apps)
+/// and a plain-text path (paste in Terminal).
+/// Returns the path to the temp file.
+fn do_copy_to_clipboard(image_data: &str) -> Result<String, String> {
+    let temp_path = crate::temp::save_temp_image(image_data)?;
+    let path_str = temp_path.to_string_lossy().to_string();
 
-    let mut clipboard = Clipboard::new().map_err(|e| format!("Clipboard error: {}", e))?;
-    clipboard
-        .set_image(arboard::ImageData {
-            width: width as usize,
-            height: height as usize,
-            bytes: std::borrow::Cow::Owned(raw_data),
-        })
-        .map_err(|e| format!("Failed to copy to clipboard: {}", e))?;
-    Ok(())
+    // AppleScript: write PNG bytes + the path string to the pasteboard.
+    // In image apps Cmd+V pastes the image; in Terminal Cmd+V pastes the path.
+    let script = format!(
+        "set p to \"{}\"
+set imgData to (read (POSIX file p) as \u{00AB}class PNGf\u{00BB})
+set the clipboard to {{\u{00AB}class PNGf\u{00BB}:imgData, string:p}}",
+        path_str
+    );
+
+    let status = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(&script)
+        .status()
+        .map_err(|e| format!("osascript launch failed: {}", e))?;
+
+    if !status.success() {
+        return Err("osascript returned a non-zero exit code".to_string());
+    }
+
+    Ok(path_str)
 }
 
 fn do_auto_save<R: Runtime>(
@@ -402,7 +415,7 @@ fn do_auto_save<R: Runtime>(
 
 #[tauri::command]
 pub async fn copy_to_clipboard(image_data: String) -> Result<(), String> {
-    do_copy_to_clipboard(&image_data)
+    do_copy_to_clipboard(&image_data).map(|_| ())
 }
 
 #[tauri::command]

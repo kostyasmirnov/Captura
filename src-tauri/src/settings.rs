@@ -2,8 +2,17 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+fn default_version() -> u32 {
+    1
+}
+fn default_temp_lifetime() -> u32 {
+    30
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AppSettings {
+    #[serde(default = "default_version")]
+    pub version: u32,
     pub save_folder: String,
     pub format: String,
     pub jpg_quality: u8,
@@ -16,17 +25,20 @@ pub struct AppSettings {
     pub show_in_dock: bool,
     pub capture_delay: u32,
     pub history_limit: u32,
+    #[serde(default = "default_temp_lifetime")]
+    pub temp_file_lifetime_minutes: u32,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         let save_folder = dirs::picture_dir()
             .unwrap_or_else(|| PathBuf::from("~"))
-            .join("Lightshot")
+            .join("Captura")
             .to_string_lossy()
             .to_string();
 
         AppSettings {
+            version: 1,
             save_folder,
             format: "png".to_string(),
             jpg_quality: 90,
@@ -39,12 +51,20 @@ impl Default for AppSettings {
             show_in_dock: false,
             capture_delay: 0,
             history_limit: 50,
+            temp_file_lifetime_minutes: 30,
         }
     }
 }
 
 impl AppSettings {
     pub fn config_path() -> PathBuf {
+        dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("io.captura.desktop")
+            .join("settings.json")
+    }
+
+    fn legacy_config_path() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("lightshot")
@@ -54,14 +74,35 @@ impl AppSettings {
     pub fn load() -> Self {
         let path = Self::config_path();
         if path.exists() {
-            match fs::read_to_string(&path) {
-                Ok(content) => {
-                    serde_json::from_str(&content).unwrap_or_default()
-                }
-                Err(_) => Self::default(),
+            if let Ok(content) = fs::read_to_string(&path) {
+                let mut s: AppSettings = serde_json::from_str(&content).unwrap_or_default();
+                s.apply_migrations();
+                return s;
             }
-        } else {
-            Self::default()
+        }
+
+        // Try to migrate from legacy path
+        let legacy = Self::legacy_config_path();
+        if legacy.exists() {
+            if let Ok(content) = fs::read_to_string(&legacy) {
+                if let Ok(mut s) = serde_json::from_str::<AppSettings>(&content) {
+                    s.apply_migrations();
+                    let _ = s.save(); // persist to new location
+                    return s;
+                }
+            }
+        }
+
+        Self::default()
+    }
+
+    fn apply_migrations(&mut self) {
+        // v0 → v1: rename legacy "Lightshot" save folder to "Captura"
+        if self.version == 0 {
+            if self.save_folder.contains("Lightshot") {
+                self.save_folder = self.save_folder.replace("Lightshot", "Captura");
+            }
+            self.version = 1;
         }
     }
 
