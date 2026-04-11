@@ -28,7 +28,6 @@ impl HistoryManager {
     }
 
     pub fn add(&mut self, entry: HistoryEntry) {
-        // Remove oldest if over limit
         while self.entries.len() >= self.limit {
             self.entries.pop();
         }
@@ -59,6 +58,13 @@ impl HistoryManager {
     pub fn history_path() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
+            .join("io.captura.desktop")
+            .join("history.json")
+    }
+
+    fn legacy_history_path() -> PathBuf {
+        dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
             .join("lightshot")
             .join("history.json")
     }
@@ -82,6 +88,18 @@ impl HistoryManager {
             if let Ok(content) = fs::read_to_string(&path) {
                 if let Ok(entries) = serde_json::from_str::<Vec<HistoryEntry>>(&content) {
                     self.entries = entries;
+                    return;
+                }
+            }
+        }
+
+        // Try to migrate from legacy path
+        let legacy = Self::legacy_history_path();
+        if legacy.exists() {
+            if let Ok(content) = fs::read_to_string(&legacy) {
+                if let Ok(entries) = serde_json::from_str::<Vec<HistoryEntry>>(&content) {
+                    self.entries = entries;
+                    let _ = self.save_to_disk(); // persist to new location
                 }
             }
         }
